@@ -3,6 +3,10 @@ from paramiko import *
 import getpass
 import logging
 
+hostname = ""
+ip = ""
+connection = None
+
 
 def verification():
     affirm = {'y', 'yes'}
@@ -49,7 +53,24 @@ def connectiontype():
     return con_type.lower()
 
 
+def verifykeyword(keyword):
+    verified = connection.send_command("show running-config | inc " + keyword)
+    if verified:
+        logging.info("[+] Success: [IP]: %s  [Hostname]: %s" % (ip.strip('\n'), hostname.split()[1]))
+        print("[+] Verified: \n%s" % verified)
+        print("[+] Success: [IP]: %s  [Hostname]: %s" % (ip.strip('\n'), hostname.split()[1]))
+        connection.save_config()
+    else:
+        logging.error("[+] Failed: [IP]: %s  [Hostname]: %s  (Reason: Verification failed)" % (ip.strip('\n'),
+                                                                                               hostname.split()[1]))
+        print("[+] Failed: [IP]: %s  [Hostname]: %s  (Reason: Verification failed)" % (ip.strip('\n'),
+                                                                                       hostname.split()[1]))
+
+
 def main():
+    global hostname
+    global ip
+    global connection
     con_type = connectiontype()
     logfile = input("Enter logfile name: [cisco.log]") or 'cisco.log'
     logging.basicConfig(filename=logfile, level=logging.DEBUG)
@@ -64,9 +85,11 @@ def main():
     for ip in ips:
         try:
             if con_type == 'ssh':
-                connection = ConnectHandler(device_type='cisco_ios', host=ip, username=user, password=passwd, secret=secret)
+                connection = ConnectHandler(device_type='cisco_ios', host=ip, username=user, password=passwd,
+                                            secret=secret)
             else:
-                connection = ConnectHandler(device_type='cisco_ios_telnet', host=ip, username=user, password=passwd, secret=secret)
+                connection = ConnectHandler(device_type='cisco_ios_telnet', host=ip, username=user, password=passwd,
+                                            secret=secret)
             connection.enable()
             hostname = connection.send_command("show run | inc hostname")
         except (NetMikoTimeoutException, TimeoutError):
@@ -89,20 +112,20 @@ def main():
             logging.error("[+] Failed: [IP]: %s (Reason: SSH Connection error)" % ip.strip('\n'))
             print("[+] Failed: [IP]: %s (Reason: SSH Connection error)" % ip.strip('\n'))
             continue
+        except ConnectionRefusedError:
+            logging.error("[+] Failed: [IP]: %s (Reason: Connection Refused)" % ip.strip('\n'))
+            print("[+] Failed: [IP]: %s (Reason: Connection Refused)" % ip.strip('\n'))
+            continue
+        except ConnectionAbortedError:
+            logging.error("[+] Failed: [IP]: %s (Reason: Software error)" % ip.strip('\n'))
+            print("[+] Failed: [IP]: %s (Reason: Software Error)" % ip.strip('\n'))
+            continue
         if hostname:
-            print("[+] Connected %s:%s" % (hostname.split()[1], ip))
+            print("[+] Connected %s:%s" % (hostname.split()[1], ip.strip('\n')))
             connection.send_config_from_file(config_file=config)
             if keyword:
-                verified = connection.send_command("show running-config | inc " + keyword)
-                if verified:
-                    logging.info("[+] Success: [IP]: %s  [Hostname]: %s" % (ip.strip('\n'), hostname.split()[1]))
-                    print("[+] Verified: \n%s" % verified)
-                    print("[+] Success: [IP]: %s  [Hostname]: %s" % (ip, hostname.split()[1]))
-                    connection.save_config()
-                else:
-                    logging.error("[+] Failed: [IP]: %s  [Hostname]: %s  (Reason: Verification failed)" % (ip.strip('\n'), hostname.split()[1]))
-                    print("[+] Failed: [IP]: %s  [Hostname]: %s  (Reason: Verification failed)" % (ip.strip('\n'), hostname.split()[1]))
-                connection.disconnect()
+                verifykeyword(keyword)
+            connection.disconnect()
 
 
 if __name__ == "__main__":
